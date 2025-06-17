@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QFileDialog, QComboBox, QMessageBox, QListWidget, QListWidgetItem
+    QFileDialog, QComboBox, QMessageBox
 )
 from PyQt5.QtCore import QThread, pyqtSignal
 import ffmpeg
@@ -48,10 +48,6 @@ class VideoConverter(QWidget):
         self.format_combo = QComboBox()
         self.format_combo.addItems(self.supported_formats)
         self.format_combo.currentTextChanged.connect(self.update_core_options)  # 新增
-
-        self.track_list = QListWidget()
-        self.track_list.setSelectionMode(QListWidget.MultiSelection)
-        self.track_list.setMinimumHeight(120)
 
         self.corenumber_label = QLabel("使用核心数量")
         self.corenumber_combo = QComboBox()
