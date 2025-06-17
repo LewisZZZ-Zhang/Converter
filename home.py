@@ -19,7 +19,7 @@ class HomePage(QWidget):
         self.layout.addWidget(self.image_label)
 
         # 添加文本
-        self.text_label = QLabel("欢迎使用多功能视频格式转换器！")
+        self.text_label = QLabel("导航")
         self.text_label.setStyleSheet("font-size: 16px; margin: 10px;")
         self.text_label.setAlignment(Qt.AlignCenter)
         self.layout.addWidget(self.text_label)
