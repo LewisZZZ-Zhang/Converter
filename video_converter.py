@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QFileDialog, QComboBox, QMessageBox
+    QFileDialog, QComboBox, QMessageBox, QHBoxLayout
 )
 from PyQt5.QtCore import QThread, pyqtSignal
 import ffmpeg
@@ -58,13 +58,26 @@ class VideoConverter(QWidget):
         self.convert_btn = QPushButton("开始转换")
         self.convert_btn.clicked.connect(self.convert_video)
 
+
+        # lines:
+        file_input_line = QHBoxLayout()
+        file_input_line.addWidget(self.label)
+        # file_input_line.addStretch()  # 让label和按钮之间有弹性空间
+        file_input_line.addWidget(self.select_btn)
+
+        file_output_type_line = QHBoxLayout()
+        file_output_type_line.addWidget(self.format_label)
+        file_output_type_line.addWidget(self.format_combo)
+
+        core_counter_line = QHBoxLayout()
+        core_counter_line.addWidget(self.corenumber_label)
+        core_counter_line.addWidget(self.corenumber_combo)
+
         layout = QVBoxLayout()
-        layout.addWidget(self.label)
-        layout.addWidget(self.select_btn)
-        layout.addWidget(self.format_label)
-        layout.addWidget(self.format_combo)
-        layout.addWidget(self.corenumber_label)
-        layout.addWidget(self.corenumber_combo)
+        # layout.addWidget(self.label)
+        layout.addLayout(file_input_line)
+        layout.addLayout(file_output_type_line)
+        layout.addLayout(core_counter_line)
         layout.addWidget(self.convert_btn)
         layout.addStretch()  # 让控件都靠上，剩余空间在底部
         self.setLayout(layout)
@@ -90,6 +103,7 @@ class VideoConverter(QWidget):
             self.label.setText(f"已选择文件: {os.path.basename(file)}")
 
     def convert_video(self):
+        
         if not self.input_file:
             QMessageBox.warning(self, "警告", "请先选择一个视频文件！")
             return
