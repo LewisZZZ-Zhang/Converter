@@ -17,7 +17,6 @@ class ConvertThread(QThread):
         self.output_kwargs = output_kwargs
 
     def run(self):
-        import ffmpeg
         try:
             (
                 ffmpeg
