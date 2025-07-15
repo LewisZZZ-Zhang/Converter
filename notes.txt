@@ -1,0 +1,24 @@
+打包成app：
+pyinstaller --noconfirm --windowed --icon=assets/appicon.icns --add-data "assets:assets" Converter.py
+
+
+app打包成zip：
+cd dist
+
+ditto -c -k --sequesterRsrc --keepParent dist/Converter.app Converter.app.zip
+
+
+弄成dmg：
+
+pip install dmgbuild
+
+# filepath: /Users/Lewis/MyFiles/FunProjects/Converter/dmg_settings.py
+volume_name = "YourApp"
+icon_locations = {
+    "YourApp.app": (140, 120),
+    "Applications": (380, 120)
+}
+
+ln -s /Applications Applications
+
+dmgbuild -s dmg_settings.py "YourApp" YourApp.dmg

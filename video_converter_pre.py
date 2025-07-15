@@ -7,12 +7,13 @@ from PyQt5.QtCore import QThread, pyqtSignal
 import ffmpeg
 import os
 
-class window1(QWidget):
+class vc_pre(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("视频格式转换")
         self.resize(800, 600)
         self.supported_formats = ["mp4", "avi", "mov", "mkv", "flv", "wmv"]
+        self.input_file = None 
 
         self.input_select_instruction = QLabel("选择要转换的视频文件")
         self.input_select_btn = QPushButton("选择文件")
@@ -28,6 +29,10 @@ class window1(QWidget):
         self.video_list = QListWidget()
         self.audio_list = QListWidget()
         self.subtitle_list = QListWidget()
+
+        self.confirm_btn = QPushButton("确认")
+        self.confirm_btn.clicked.connect(self.go_to_confirm_page)
+
 # 新增：三个列表和分组框
         video_col = QVBoxLayout()
         video_label = QLabel("视频轨道")
@@ -68,6 +73,7 @@ class window1(QWidget):
 
 
         layout.addLayout(output_format_line)
+        layout.addWidget(self.confirm_btn)  # 放在合适位置
         layout.addStretch()  
 
         self.setLayout(layout) 
@@ -101,8 +107,30 @@ class window1(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "错误", f"无法解析轨道信息：{e}")
 
+    def go_to_confirm_page(self):
+        if not hasattr(self, "input_file") or not self.input_file:
+            QMessageBox.warning(self, "提示", "请先选择文件")
+            return
+        file_ext = os.path.splitext(self.input_file)[1][1:].lower()
+        target_format = self.format_combo.currentText().lower()
+
+        # 跳转到不同的模块窗口（假设这些类在其他文件中定义）
+        if file_ext == target_format:
+            from vc_modules.vc_same import window1
+            self.next_page = window1(self.input_file, target_format)
+        elif file_ext == "mkv" and target_format == "mp4":
+            from page_remux import PageRemux
+            self.next_page = PageRemux(self.input_file, target_format)
+        else:
+            from page_transcode import PageTranscode
+            self.next_page = PageTranscode(self.input_file, target_format)
+
+        self.next_page.show()
+        self.close()
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = window1()
+    window = vc_pre()
     window.show()
     sys.exit(app.exec_())
