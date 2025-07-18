@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QApplication, QLabel
 from PyQt5.QtGui import QPixmap
-from video_converter import VideoConverter
+from video_converter_pre import vc_pre
 from extract_tracks import AudioExtractor  # 假设音轨提取器在extract_tracks.py中定义
 
 class HomePage(QWidget):
@@ -38,7 +38,7 @@ class HomePage(QWidget):
         self.setLayout(self.layout)
 
     def open_converter(self):
-        self.converter_window = VideoConverter()
+        self.converter_window = vc_pre()
         self.converter_window.show()
 
     def open_extractor(self):

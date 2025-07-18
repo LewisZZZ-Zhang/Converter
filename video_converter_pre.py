@@ -12,7 +12,11 @@ class vc_pre(QWidget):
         super().__init__()
         self.setWindowTitle("视频格式转换")
         self.resize(800, 600)
-        self.supported_formats = ["mp4", "avi", "mov", "mkv", "flv", "wmv"]
+
+        self.supported_formats = ["mp4", "avi", "mov", "mkv", "wmv"]
+        self.single_track_formats = ["avi", "wmv"]
+        self.multi_track_formats = ["mp4", "mov", "mkv"]
+
         self.input_file = None 
 
         self.input_select_instruction = QLabel("选择要转换的视频文件")
@@ -97,12 +101,51 @@ class vc_pre(QWidget):
                 codec = stream.get('codec_name', '未知')
                 idx = stream.get('index', -1)
                 lang = stream.get('tags', {}).get('language', '')
-                desc = f"#{idx} {codec} {lang}".strip()
                 if stream['codec_type'] == 'video':
+                    # 帧率
+                    fr = stream.get('r_frame_rate', '')
+                    try:
+                        if fr and '/' in fr:
+                            num, den = fr.split('/')
+                            fr_val = float(num) / float(den) if float(den) != 0 else 0
+                        else:
+                            fr_val = float(fr) if fr else 0
+                    except:
+                        fr_val = 0
+                    # 分辨率
+                    width = stream.get('width', '')
+                    height = stream.get('height', '')
+                    # 比特率
+                    br = stream.get('bit_rate', '')
+                    if not br:
+                        br = stream.get('tags', {}).get('BPS', '')
+                    if br:
+                        try:
+                            br_disp = f"{int(br)//1000} kbps"
+                        except:
+                            br_disp = str(br)
+                    else:
+                        br_disp = ''
+                    desc = f"#{idx} {codec} {lang} {width}x{height} {fr_val:.2f}fps {br_disp}".strip()
                     self.video_list.addItem(desc)
                 elif stream['codec_type'] == 'audio':
+                    # 音频也可加采样率/声道数/比特率
+                    sr = stream.get('sample_rate', '')
+                    ch = stream.get('channels', '')
+                    br = stream.get('bit_rate', '')
+                    if not br:
+                        br = stream.get('tags', {}).get('BPS', '')
+                    if br:
+                        try:
+                            br_disp = f"{int(br)//1000} kbps"
+                        except:
+                            br_disp = str(br)
+                    else:
+                        br_disp = ''
+                    desc = f"#{idx} {codec} {lang} {sr}Hz {ch}ch {br_disp}".strip()
                     self.audio_list.addItem(desc)
                 elif stream['codec_type'] == 'subtitle':
+                    desc = f"#{idx} {codec} {lang}".strip()
                     self.subtitle_list.addItem(desc)
         except Exception as e:
             QMessageBox.warning(self, "错误", f"无法解析轨道信息：{e}")
@@ -115,15 +158,15 @@ class vc_pre(QWidget):
         target_format = self.format_combo.currentText().lower()
 
         # 跳转到不同的模块窗口（假设这些类在其他文件中定义）
-        if file_ext == target_format:
-            from vc_modules.vc_same import window1
-            self.next_page = window1(self.input_file, target_format)
-        elif file_ext == "mkv" and target_format == "mp4":
-            from page_remux import PageRemux
-            self.next_page = PageRemux(self.input_file, target_format)
-        else:
-            from page_transcode import PageTranscode
-            self.next_page = PageTranscode(self.input_file, target_format)
+        if target_format in self.multi_track_formats:
+            from vc_modules.vc_multi import window1 as sub_window1
+            self.next_page = sub_window1(self.input_file, target_format)
+        elif target_format in self.single_track_formats:
+            from vc_modules.vc_single import window1 as sub_window2
+            self.next_page = sub_window2(self.input_file, target_format)
+        # else:
+        #     from page_transcode import PageTranscode
+        #     self.next_page = PageTranscode(self.input_file, target_format)
 
         self.next_page.show()
         self.close()

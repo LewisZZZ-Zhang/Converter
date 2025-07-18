@@ -4,8 +4,10 @@ from PyQt5.QtWidgets import (
     QFileDialog, QComboBox, QMessageBox, QHBoxLayout
 )
 from PyQt5.QtCore import QThread, pyqtSignal
-import ffmpeg
+# import assets.ffmpeg as ffmpeg
 import os
+
+import subprocess
 
 class ConvertThread(QThread):
     finished = pyqtSignal(bool, str)
@@ -15,15 +17,19 @@ class ConvertThread(QThread):
         self.input_file = input_file
         self.output_file = output_file
         self.output_kwargs = output_kwargs
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.ffmpeg_path = os.path.join(base_dir, "assets", "ffmpeg")
 
     def run(self):
         try:
-            (
-                ffmpeg
-                .input(self.input_file)
-                .output(self.output_file, **self.output_kwargs)
-                .run(overwrite_output=True)
-            )
+            cmd = [self.ffmpeg_path, '-i', self.input_file]
+            # 添加输出参数
+            if 'vcodec' in self.output_kwargs:
+                cmd += ['-vcodec', self.output_kwargs['vcodec']]
+            if 'threads' in self.output_kwargs:
+                cmd += ['-threads', str(self.output_kwargs['threads'])]
+            cmd += [self.output_file]
+            subprocess.run(cmd, check=True)
             self.finished.emit(True, self.output_file)
         except Exception as e:
             self.finished.emit(False, str(e))
