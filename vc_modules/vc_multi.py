@@ -1,7 +1,13 @@
 
 import sys
 import os
-import ffmpeg
+import subprocess, json
+def get_bin_path(bin_name):
+    import sys, os
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, 'bin', bin_name)
+    else:
+        return os.path.join(os.path.dirname(__file__), '..', 'bin', bin_name)
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QMessageBox, QFileDialog, QApplication
@@ -105,33 +111,76 @@ class window1(QWidget):
         self.video_list.clear()
         self.audio_list.clear()
         self.subtitle_list.clear()
+        ffprobe_path = get_bin_path('ffprobe')
+        cmd = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', self.input_file]
         try:
-            info = ffmpeg.probe(self.input_file)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info = json.loads(result.stdout.decode(errors='ignore'))
             target_fmt = self.target_format.lower()
             for stream in info.get('streams', []):
                 idx = stream.get('index', -1)
                 codec = stream.get('codec_name', '未知')
                 lang = stream.get('tags', {}).get('language', '')
-                desc = f"#{idx} {codec} {lang}".strip()
-                item = QListWidgetItem(desc)
-                item.setData(Qt.UserRole, idx)
-                # 视频流：mjpeg为封面图片，禁用
                 if stream['codec_type'] == 'video':
+                    # 帧率
+                    fr = stream.get('r_frame_rate', '')
+                    try:
+                        if fr and '/' in fr:
+                            num, den = fr.split('/')
+                            fr_val = float(num) / float(den) if float(den) != 0 else 0
+                        else:
+                            fr_val = float(fr) if fr else 0
+                    except:
+                        fr_val = 0
+                    width = stream.get('width', '')
+                    height = stream.get('height', '')
+                    br = stream.get('bit_rate', '')
+                    if not br:
+                        br = stream.get('tags', {}).get('BPS', '')
+                    if br:
+                        try:
+                            br_disp = f"{int(br)//1000} kbps"
+                        except:
+                            br_disp = str(br)
+                    else:
+                        br_disp = ''
+                    desc = f"#{idx} {codec} {lang} {width}x{height} {fr_val:.2f}fps {br_disp}".strip()
+                    item = QListWidgetItem(desc)
+                    item.setData(Qt.UserRole, idx)
                     if codec == 'mjpeg':
                         item.setFlags(item.flags() & ~Qt.ItemIsSelectable & ~Qt.ItemIsEnabled)
                         item.setText(desc + " (图片流,不可选)")
                     self.video_list.addItem(item)
-                # 音频流
                 elif stream['codec_type'] == 'audio':
+                    sr = stream.get('sample_rate', '')
+                    ch = stream.get('channels', '')
+                    br = stream.get('bit_rate', '')
+                    if not br:
+                        br = stream.get('tags', {}).get('BPS', '')
+                    if br:
+                        try:
+                            br_disp = f"{int(br)//1000} kbps"
+                        except:
+                            br_disp = str(br)
+                    else:
+                        br_disp = ''
+                    desc = f"#{idx} {codec} {lang} {sr}Hz {ch}ch {br_disp}".strip()
+                    item = QListWidgetItem(desc)
+                    item.setData(Qt.UserRole, idx)
                     self.audio_list.addItem(item)
-                # 字幕流：PGS字幕且目标为mp4时禁用
                 elif stream['codec_type'] == 'subtitle':
+                    desc = f"#{idx} {codec} {lang}".strip()
+                    item = QListWidgetItem(desc)
+                    item.setData(Qt.UserRole, idx)
                     if codec in ('hdmv_pgs_subtitle', 'pgssub') and target_fmt == 'mp4':
                         item.setFlags(item.flags() & ~Qt.ItemIsSelectable & ~Qt.ItemIsEnabled)
                         item.setText(desc + " (PGS字幕,mp4不支持)")
                     self.subtitle_list.addItem(item)
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"无法解析轨道信息：{e}")
+            err_msg = str(e)
+            if hasattr(e, 'stderr') and e.stderr:
+                err_msg += f"\nffprobe stderr:\n{e.stderr.decode(errors='ignore') if hasattr(e.stderr, 'decode') else str(e.stderr)}"
+            QMessageBox.warning(self, "错误", f"无法解析轨道信息：{err_msg}")
 
     def select_output_file(self):
         file, _ = QFileDialog.getSaveFileName(self, "选择输出文件", os.path.splitext(self.input_file)[0] + f"_remux.{self.target_format}", f"*.{self.target_format}")
@@ -151,16 +200,17 @@ class window1(QWidget):
         if not (video_idxs or audio_idxs or subtitle_idxs or custom_subs):
             QMessageBox.warning(self, "提示", "请至少选择一个轨道或外部字幕")
             return
-        # 检查外部字幕兼容性
         target_fmt = self.target_format.lower()
         for f, codec in [c[:2] for c in custom_subs]:
             if target_fmt == 'mp4' and codec in ('pgs', 'vobsub'):
                 QMessageBox.warning(self, "不支持的字幕", f"{os.path.basename(f)} 为PGS/VobSub字幕，mp4不支持。请移除。")
                 return
+        ffprobe_path = get_bin_path('ffprobe')
+        cmd_probe = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', self.input_file]
         try:
-            # 获取原视频所有字幕流的codec
-            info = ffmpeg.probe(self.input_file)
-            subtitle_codecs = []  # 与subtitle_idxs顺序一致
+            result = subprocess.run(cmd_probe, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info = json.loads(result.stdout.decode(errors='ignore'))
+            subtitle_codecs = []
             for idx in subtitle_idxs:
                 for stream in info.get('streams', []):
                     if stream['codec_type'] == 'subtitle' and stream.get('index', -1) == idx:
@@ -174,15 +224,12 @@ class window1(QWidget):
                 stream_args += ['-map', f'0:v:{self._stream_subidx(idx, "video")}' ]
             for idx in audio_idxs:
                 stream_args += ['-map', f'0:a:{self._stream_subidx(idx, "audio")}' ]
-            # 记录需要转码的字幕流序号
             need_transcode_sub = []
             for i, idx in enumerate(subtitle_idxs):
                 stream_args += ['-map', f'0:s:{self._stream_subidx(idx, "subtitle")}' ]
                 if target_fmt == 'mp4' and subtitle_codecs[i] != 'mov_text':
                     need_transcode_sub.append(i)
-            # 外部字幕追加为新输入
             input_files = [self.input_file] + [c[0] for c in custom_subs]
-            # map外部字幕
             for i, (f, codec) in enumerate(custom_subs):
                 if target_fmt == 'mp4' and codec in ('pgs', 'vobsub'):
                     continue
@@ -190,15 +237,13 @@ class window1(QWidget):
                 if target_fmt == 'mp4':
                     need_transcode_sub.append(len(subtitle_idxs) + i)
 
-            # 构建ffmpeg命令
-            cmd = ['ffmpeg', '-y']
+            ffmpeg_path = get_bin_path('ffmpeg')
+            cmd = [ffmpeg_path, '-y']
             for f in input_files:
                 cmd += ['-i', f]
             cmd += stream_args
 
-            # 生成-c参数
             if target_fmt == 'mp4' and (subtitle_idxs or custom_subs):
-                # -c copy -c:s mov_text 或 -c:s:0 mov_text -c:s:1 mov_text ...
                 cmd += ['-c', 'copy']
                 for i in need_transcode_sub:
                     cmd += [f'-c:s:{i}', 'mov_text']
@@ -206,18 +251,26 @@ class window1(QWidget):
             else:
                 cmd += ['-c', 'copy', self.output_file]
 
-            ret = os.system(' '.join([f'"{c}"' if ' ' in str(c) else str(c) for c in cmd]))
-            if ret == 0:
-                QMessageBox.information(self, "成功", "重新打包完成！")
-            else:
-                QMessageBox.warning(self, "失败", "重新打包失败，请检查文件和格式。")
+            try:
+                ret = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if ret.returncode == 0:
+                    QMessageBox.information(self, "成功", "重新打包完成！")
+                else:
+                    QMessageBox.warning(self, "失败", f"重新打包失败，请检查文件和格式。\n{ret.stderr.decode(errors='ignore')}")
+            except Exception as e2:
+                QMessageBox.warning(self, "错误", f"ffmpeg执行出错：{e2}")
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"重新打包出错：{e}")
+            err_msg = str(e)
+            if hasattr(e, 'stderr') and e.stderr:
+                err_msg += f"\nffprobe stderr:\n{e.stderr.decode(errors='ignore') if hasattr(e.stderr, 'decode') else str(e.stderr)}"
+            QMessageBox.warning(self, "错误", f"重新打包出错：{err_msg}")
 
     def _stream_subidx(self, idx, typ):
-        # 计算同类型流的子序号
+        ffprobe_path = get_bin_path('ffprobe')
+        cmd = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', self.input_file]
         try:
-            info = ffmpeg.probe(self.input_file)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info = json.loads(result.stdout.decode(errors='ignore'))
             subidx = -1
             for stream in info.get('streams', []):
                 if stream['codec_type'] == typ:

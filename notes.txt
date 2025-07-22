@@ -1,5 +1,5 @@
 打包成app：
-pyinstaller --noconfirm --windowed --icon=assets/icon.icns --add-data "assets:assets" Converter.py
+pyinstaller --noconfirm --windowed --icon=assets/icon.icns --add-data "assets:assets" --add-data "bin:bin" Converter.py
 
 
 app打包成zip：

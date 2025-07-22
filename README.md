@@ -17,7 +17,7 @@ Mac用格式小工具
 - 解压 `.zip`  
 - 将解压出来的文件夹中的 `Converter.app` 移动到 Mac 的 `Application` 文件夹
 
-### 2. 安装依赖（如果有问题可以尝试）
+### 2. 安装依赖（如果有问题可以尝试, 但是大几率不是这个问题，新版本已经打包了ffmpeg和ffprobe）
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"

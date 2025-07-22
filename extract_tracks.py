@@ -4,7 +4,13 @@ from PyQt5.QtWidgets import (
     QFileDialog, QComboBox, QMessageBox
 )
 from PyQt5.QtCore import QThread, pyqtSignal
-import ffmpeg
+import subprocess, json
+def get_bin_path(bin_name):
+    import sys, os
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, 'bin', bin_name)
+    else:
+        return os.path.join(os.path.dirname(__file__), 'bin', bin_name)
 import os
 
 class ExtractThread(QThread):
@@ -19,15 +25,27 @@ class ExtractThread(QThread):
 
     def run(self):
         try:
-            # 提取指定音轨
-            stream = ffmpeg.input(self.input_file)
-            audio = stream.audio.filter('atrim', start=0)
-            (
-                ffmpeg
-                .output(stream['a:{}'.format(self.track_index)], self.output_file, format=self.output_format)
-                .run(overwrite_output=True)
-            )
-            self.finished.emit(True, self.output_file)
+            ffmpeg_path = get_bin_path('ffmpeg')
+            # 增加分析参数，提升兼容性
+            cmd = [
+                ffmpeg_path, '-y', '-analyzeduration', '100M', '-probesize', '100M',
+                '-i', self.input_file,
+                '-map', f'0:a:{self.track_index}',
+                '-vn'
+            ]
+            # 判断是否需要转码（如用户选的不是源音轨编码）
+            ext = os.path.splitext(self.output_file)[1].lower().replace('.', '')
+            # 常见无损格式直接copy，否则转码
+            if ext in ('wav', 'flac', 'm4a', 'aac', 'ogg'):
+                cmd += ['-acodec', 'copy']
+            else:
+                cmd += ['-acodec', ext]
+            cmd += [self.output_file]
+            ret = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if ret.returncode == 0:
+                self.finished.emit(True, self.output_file)
+            else:
+                self.finished.emit(False, ret.stderr.decode(errors='ignore'))
         except Exception as e:
             self.finished.emit(False, str(e))
 
@@ -75,9 +93,12 @@ class AudioExtractor(QWidget):
             self.list_audio_tracks()
 
     def list_audio_tracks(self):
-        # 使用 ffprobe 获取音轨信息
+        # 使用 bin/ffprobe 获取音轨信息
+        ffprobe_path = get_bin_path('ffprobe')
+        cmd = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', self.input_file]
         try:
-            probe = ffmpeg.probe(self.input_file)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            probe = json.loads(result.stdout.decode(errors='ignore'))
             self.audio_tracks = [
                 stream for stream in probe['streams'] if stream['codec_type'] == 'audio'
             ]
@@ -90,7 +111,10 @@ class AudioExtractor(QWidget):
             if not self.audio_tracks:
                 self.track_combo.addItem("未检测到音轨")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"无法读取音轨信息: {e}")
+            err_msg = str(e)
+            if hasattr(e, 'stderr') and e.stderr:
+                err_msg += f"\nffprobe stderr:\n{e.stderr.decode(errors='ignore') if hasattr(e.stderr, 'decode') else str(e.stderr)}"
+            QMessageBox.critical(self, "错误", f"无法读取音轨信息: {err_msg}")
 
     def extract_audio(self):
         if not self.input_file or not self.audio_tracks:

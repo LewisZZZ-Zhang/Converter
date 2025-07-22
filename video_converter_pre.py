@@ -1,10 +1,20 @@
+
+def get_ffprobe_path():
+    import sys, os
+    if getattr(sys, 'frozen', False):
+        # PyInstaller打包后
+        return os.path.join(sys._MEIPASS, 'bin', 'ffprobe')
+    else:
+        # 开发环境
+        return os.path.join(os.path.dirname(__file__), 'bin', 'ffprobe')
+    
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
     QFileDialog, QComboBox, QMessageBox, QHBoxLayout, QListWidget, QGroupBox
 )
 from PyQt5.QtCore import QThread, pyqtSignal
-import ffmpeg
+# import ffmpeg
 import os
 
 class vc_pre(QWidget):
@@ -24,6 +34,10 @@ class vc_pre(QWidget):
         self.input_select_btn.clicked.connect(self.select_file)
         self.input_select_result = QLabel("未选择文件")
         self.input_select_result.setWordWrap(True)
+
+        # 新增：视频总信息显示区
+        self.summary_label = QLabel("")
+        self.summary_label.setWordWrap(True)
 
         self.format_label = QLabel("选择输出格式")
         self.format_combo = QComboBox()
@@ -73,14 +87,12 @@ class vc_pre(QWidget):
         layout = QVBoxLayout()
         layout.addLayout(file_input_line)
         layout.addWidget(self.input_select_result)
-        layout.addLayout(tracks_line) 
-
-
+        layout.addWidget(self.summary_label)  # 新增：总信息显示区
+        layout.addLayout(tracks_line)
         layout.addLayout(output_format_line)
-        layout.addWidget(self.confirm_btn)  # 放在合适位置
-        layout.addStretch()  
-
-        self.setLayout(layout) 
+        layout.addWidget(self.confirm_btn)
+        layout.addStretch()
+        self.setLayout(layout)
 
     def select_file(self):
         file, _ = QFileDialog.getOpenFileName(self, "选择视频文件", "", "视频文件 (*.mp4 *.avi *.mov *.mkv *.flv *.wmv)")
@@ -91,18 +103,66 @@ class vc_pre(QWidget):
             self.update_track_lists(file)
 
     def update_track_lists(self, file):
-        # 清空列表
+        import subprocess, json
         self.video_list.clear()
         self.audio_list.clear()
         self.subtitle_list.clear()
+        self.summary_label.setText("")
+        ffprobe_path = get_ffprobe_path()
+        cmd_streams = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', file]
+        cmd_format = [ffprobe_path, '-v', 'error', '-show_format', '-print_format', 'json', file]
         try:
-            info = ffmpeg.probe(file)
-            for stream in info.get('streams', []):
+            # 获取流信息
+            result_streams = subprocess.run(cmd_streams, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info_streams = json.loads(result_streams.stdout.decode(errors='ignore'))
+            # 获取文件整体信息
+            result_format = subprocess.run(cmd_format, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info_format = json.loads(result_format.stdout.decode(errors='ignore'))
+
+            # 总比特率
+            overall_bitrate = info_format.get('format', {}).get('bit_rate', '')
+            if overall_bitrate:
+                try:
+                    overall_bitrate_disp = f"{int(overall_bitrate)//1000} kbps"
+                except:
+                    overall_bitrate_disp = str(overall_bitrate)
+            else:
+                overall_bitrate_disp = ''
+
+            # 分辨率和色彩深度（取第一个视频流）
+            width = height = pix_fmt = color_depth = ''
+            for stream in info_streams.get('streams', []):
+                if stream.get('codec_type') == 'video':
+                    width = stream.get('width', '')
+                    height = stream.get('height', '')
+                    pix_fmt = stream.get('pix_fmt', '')
+                    color_depth = stream.get('bits_per_raw_sample', '')
+                    break
+
+            # 色彩深度补充（部分视频流可能没有 bits_per_raw_sample）
+            if not color_depth and pix_fmt:
+                # 常见像素格式推断色深
+                pix_fmt_map = {
+                    'yuv420p': '8', 'yuv422p': '8', 'yuv444p': '8',
+                    'yuv420p10le': '10', 'yuv422p10le': '10', 'yuv444p10le': '10',
+                    'yuv420p12le': '12', 'yuv422p12le': '12', 'yuv444p12le': '12',
+                }
+                color_depth = pix_fmt_map.get(pix_fmt, '')
+
+            summary = f"总比特率: {overall_bitrate_disp}"
+            if width and height:
+                summary += f"  分辨率: {width}x{height}"
+            if color_depth:
+                summary += f"  色深: {color_depth}bit"
+            if pix_fmt:
+                summary += f"  像素格式: {pix_fmt}"
+            self.summary_label.setText(summary)
+
+            for stream in info_streams.get('streams', []):
                 codec = stream.get('codec_name', '未知')
                 idx = stream.get('index', -1)
                 lang = stream.get('tags', {}).get('language', '')
                 if stream['codec_type'] == 'video':
-                    # 帧率
                     fr = stream.get('r_frame_rate', '')
                     try:
                         if fr and '/' in fr:
@@ -112,10 +172,8 @@ class vc_pre(QWidget):
                             fr_val = float(fr) if fr else 0
                     except:
                         fr_val = 0
-                    # 分辨率
                     width = stream.get('width', '')
                     height = stream.get('height', '')
-                    # 比特率
                     br = stream.get('bit_rate', '')
                     if not br:
                         br = stream.get('tags', {}).get('BPS', '')
@@ -129,7 +187,6 @@ class vc_pre(QWidget):
                     desc = f"#{idx} {codec} {lang} {width}x{height} {fr_val:.2f}fps {br_disp}".strip()
                     self.video_list.addItem(desc)
                 elif stream['codec_type'] == 'audio':
-                    # 音频也可加采样率/声道数/比特率
                     sr = stream.get('sample_rate', '')
                     ch = stream.get('channels', '')
                     br = stream.get('bit_rate', '')
@@ -148,7 +205,13 @@ class vc_pre(QWidget):
                     desc = f"#{idx} {codec} {lang}".strip()
                     self.subtitle_list.addItem(desc)
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"无法解析轨道信息：{e}")
+            err_msg = str(e)
+            if hasattr(e, 'stderr') and e.stderr:
+                err_msg += f"\nffprobe stderr:\n{e.stderr.decode(errors='ignore') if hasattr(e.stderr, 'decode') else str(e.stderr)}"
+            elif isinstance(e, subprocess.CalledProcessError):
+                err_msg += f"\nffprobe stderr:\n{e.stderr.decode(errors='ignore') if hasattr(e.stderr, 'decode') else str(e.stderr)}"
+            self.summary_label.setText("")
+            QMessageBox.warning(self, "错误", f"无法解析轨道信息：{err_msg}")
 
     def go_to_confirm_page(self):
         if not hasattr(self, "input_file") or not self.input_file:

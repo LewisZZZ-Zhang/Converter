@@ -1,6 +1,12 @@
 import sys
 import os
-import ffmpeg
+import subprocess, json
+def get_bin_path(bin_name):
+    import sys, os
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, 'bin', bin_name)
+    else:
+        return os.path.join(os.path.dirname(__file__), '..', 'bin', bin_name)
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QMessageBox, QFileDialog, QApplication
@@ -60,21 +66,63 @@ class window1(QWidget):
     def load_tracks(self):
         self.video_list.clear()
         self.audio_list.clear()
+        ffprobe_path = get_bin_path('ffprobe')
+        cmd = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', self.input_file]
         try:
-            info = ffmpeg.probe(self.input_file)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info = json.loads(result.stdout.decode(errors='ignore'))
             for stream in info.get('streams', []):
                 idx = stream.get('index', -1)
                 codec = stream.get('codec_name', '未知')
                 lang = stream.get('tags', {}).get('language', '')
-                desc = f"#{idx} {codec} {lang}".strip()
-                item = QListWidgetItem(desc)
-                item.setData(Qt.UserRole, idx)
                 if stream['codec_type'] == 'video':
+                    fr = stream.get('r_frame_rate', '')
+                    try:
+                        if fr and '/' in fr:
+                            num, den = fr.split('/')
+                            fr_val = float(num) / float(den) if float(den) != 0 else 0
+                        else:
+                            fr_val = float(fr) if fr else 0
+                    except:
+                        fr_val = 0
+                    width = stream.get('width', '')
+                    height = stream.get('height', '')
+                    br = stream.get('bit_rate', '')
+                    if not br:
+                        br = stream.get('tags', {}).get('BPS', '')
+                    if br:
+                        try:
+                            br_disp = f"{int(br)//1000} kbps"
+                        except:
+                            br_disp = str(br)
+                    else:
+                        br_disp = ''
+                    desc = f"#{idx} {codec} {lang} {width}x{height} {fr_val:.2f}fps {br_disp}".strip()
+                    item = QListWidgetItem(desc)
+                    item.setData(Qt.UserRole, idx)
                     self.video_list.addItem(item)
                 elif stream['codec_type'] == 'audio':
+                    sr = stream.get('sample_rate', '')
+                    ch = stream.get('channels', '')
+                    br = stream.get('bit_rate', '')
+                    if not br:
+                        br = stream.get('tags', {}).get('BPS', '')
+                    if br:
+                        try:
+                            br_disp = f"{int(br)//1000} kbps"
+                        except:
+                            br_disp = str(br)
+                    else:
+                        br_disp = ''
+                    desc = f"#{idx} {codec} {lang} {sr}Hz {ch}ch {br_disp}".strip()
+                    item = QListWidgetItem(desc)
+                    item.setData(Qt.UserRole, idx)
                     self.audio_list.addItem(item)
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"无法解析轨道信息：{e}")
+            err_msg = str(e)
+            if hasattr(e, 'stderr') and e.stderr:
+                err_msg += f"\nffprobe stderr:\n{e.stderr.decode(errors='ignore') if hasattr(e.stderr, 'decode') else str(e.stderr)}"
+            QMessageBox.warning(self, "错误", f"无法解析轨道信息：{err_msg}")
 
     def select_output_file(self):
         file, _ = QFileDialog.getSaveFileName(self, "选择输出文件", os.path.splitext(self.input_file)[0] + f"_single.{self.target_format}", f"*.{self.target_format}")
@@ -93,8 +141,11 @@ class window1(QWidget):
             return
         v_idx = video_items[0].data(Qt.UserRole)
         a_idx = audio_items[0].data(Qt.UserRole)
+        ffprobe_path = get_bin_path('ffprobe')
+        cmd_probe = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', self.input_file]
         try:
-            info = ffmpeg.probe(self.input_file)
+            result = subprocess.run(cmd_probe, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info = json.loads(result.stdout.decode(errors='ignore'))
             v_codec = None
             a_codec = None
             for stream in info.get('streams', []):
@@ -102,10 +153,7 @@ class window1(QWidget):
                     v_codec = stream.get('codec_name', '').lower()
                 if stream['codec_type'] == 'audio' and stream.get('index', -1) == a_idx:
                     a_codec = stream.get('codec_name', '').lower()
-            # 目标编码判断
             target_fmt = self.target_format.lower()
-            # avi: 视频mpeg4/xvid/divx，音频mp3/ac3
-            # wmv: 视频wmv1/wmv2/wmv3，音频wmav1/wmav2
             need_vcodec = None
             need_acodec = None
             if target_fmt == 'avi':
@@ -118,9 +166,9 @@ class window1(QWidget):
                     need_vcodec = 'wmv2'
                 if a_codec not in ('wmav1', 'wmav2'):
                     need_acodec = 'wmav2'
-            # 构建ffmpeg命令
+            ffmpeg_path = get_bin_path('ffmpeg')
             cmd = [
-                'ffmpeg', '-y', '-i', self.input_file,
+                ffmpeg_path, '-y', '-i', self.input_file,
                 '-map', f'0:v:{self._stream_subidx(v_idx, "video")}',
                 '-map', f'0:a:{self._stream_subidx(a_idx, "audio")}'
             ]
@@ -133,17 +181,26 @@ class window1(QWidget):
             else:
                 cmd += ['-c:a', 'copy']
             cmd += [self.output_file]
-            ret = os.system(' '.join([f'"{c}"' if ' ' in str(c) else str(c) for c in cmd]))
-            if ret == 0:
-                QMessageBox.information(self, "成功", "打包完成！")
-            else:
-                QMessageBox.warning(self, "失败", "打包失败，请检查文件和格式。")
+            try:
+                ret = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if ret.returncode == 0:
+                    QMessageBox.information(self, "成功", "打包完成！")
+                else:
+                    QMessageBox.warning(self, "失败", f"打包失败，请检查文件和格式。\n{ret.stderr.decode(errors='ignore')}")
+            except Exception as e2:
+                QMessageBox.warning(self, "错误", f"ffmpeg执行出错：{e2}")
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"打包出错：{e}")
+            err_msg = str(e)
+            if hasattr(e, 'stderr') and e.stderr:
+                err_msg += f"\nffprobe stderr:\n{e.stderr.decode(errors='ignore') if hasattr(e.stderr, 'decode') else str(e.stderr)}"
+            QMessageBox.warning(self, "错误", f"打包出错：{err_msg}")
 
     def _stream_subidx(self, idx, typ):
+        ffprobe_path = get_bin_path('ffprobe')
+        cmd = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', self.input_file]
         try:
-            info = ffmpeg.probe(self.input_file)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            info = json.loads(result.stdout.decode(errors='ignore'))
             subidx = -1
             for stream in info.get('streams', []):
                 if stream['codec_type'] == typ:
