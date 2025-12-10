@@ -1,27 +1,29 @@
 # Converter
-Mac用格式小工具  
-包括：
+A small format utility for macOS
 
-- 视频格式转换
-- 视频轨道选择、增加、重新打包
-- 音轨提取
-- 等
+Includes:
 
-支持大部分主流格式  
+- Video format conversion
+- Video track selection, addition, and repackaging
+- Audio track extraction
+- And more
 
-## 使用方法
+Supports most mainstream formats.
 
-### 1. 使用 zip 安装
+## Usage
 
-- 下载 `.zip` 文件  
-- 解压 `.zip`  
-- 将解压出来的文件夹中的 `Converter.app` 移动到 Mac 的 `Application` 文件夹
+### 1. Install using the zip
 
-### 2. 安装依赖（如果有问题可以尝试, 但是大几率不是这个问题，新版本已经打包了ffmpeg和ffprobe）
+- Download the `.zip` file
+- Unzip the archive
+- Move the extracted folder's `Converter.app` into the Mac `Applications` folder
+
+### 2. Install dependencies (optional)
+
+If you run into problems you can try installing dependencies, but in most cases this is not necessary — newer releases bundle `ffmpeg` and `ffprobe`.
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 brew install ffmpeg
 ffmpeg -version
-
-
+```
