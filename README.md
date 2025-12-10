@@ -23,3 +23,5 @@ Mac用格式小工具
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 brew install ffmpeg
 ffmpeg -version
+
+
