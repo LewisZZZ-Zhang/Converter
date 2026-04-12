@@ -4,9 +4,14 @@ import os
 import subprocess, json
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+<<<<<<< Updated upstream
     QMessageBox, QFileDialog, QApplication, QProgressBar
+=======
+    QMessageBox, QFileDialog, QApplication, QToolButton
+>>>>>>> Stashed changes
 )
 from PyQt5.QtCore import Qt
+from vc_modules.bin_info import detect_binary_info, get_bin_path
 
 from vc_modules.ffmpeg_progress import (
     FFmpegWorker,
@@ -96,6 +101,29 @@ class window1(QWidget):
         self.status_label = QLabel("")
         self.status_label.setVisible(False)
 
+        ffmpeg_info = detect_binary_info("ffmpeg")
+        ffprobe_info = detect_binary_info("ffprobe")
+        self.debug_toggle_btn = QToolButton()
+        self.debug_toggle_btn.setText("调试")
+        self.debug_toggle_btn.setCheckable(True)
+        self.debug_toggle_btn.setChecked(False)
+        self.debug_toggle_btn.setArrowType(Qt.RightArrow)
+        self.debug_toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.debug_toggle_btn.setStyleSheet("QToolButton { border: none; padding: 0; }")
+        self.debug_info_label = QLabel(
+            f"ffmpeg: {ffmpeg_info['arch']}  {ffmpeg_info['path']}\n"
+            f"ffprobe: {ffprobe_info['arch']}  {ffprobe_info['path']}"
+        )
+        self.debug_info_label.setWordWrap(True)
+        self.debug_panel = QWidget()
+        debug_layout = QVBoxLayout()
+        debug_layout.setContentsMargins(18, 0, 0, 0)
+        debug_layout.addWidget(self.debug_info_label)
+        self.debug_panel.setLayout(debug_layout)
+        self.debug_info_label.setVisible(False)
+        self.debug_panel.setVisible(False)
+        self.debug_toggle_btn.toggled.connect(self._set_debug_visible)
+
         layout = QVBoxLayout()
         layout.addWidget(file_label)
         layout.addWidget(format_label)
@@ -107,7 +135,14 @@ class window1(QWidget):
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.status_label)
         layout.addStretch()
+        layout.addWidget(self.debug_toggle_btn)
+        layout.addWidget(self.debug_panel)
         self.setLayout(layout)
+
+    def _set_debug_visible(self, visible):
+        self.debug_toggle_btn.setArrowType(Qt.DownArrow if visible else Qt.RightArrow)
+        self.debug_panel.setVisible(visible)
+        self.debug_info_label.setVisible(visible)
     def add_custom_sub(self):
         files, _ = QFileDialog.getOpenFileNames(self, "选择字幕文件", "", "字幕文件 (*.srt *.ass *.ssa *.vtt *.sub *.sup *.pgs *.idx *.txt)")
         if not files:
