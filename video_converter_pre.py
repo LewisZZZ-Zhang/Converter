@@ -18,6 +18,7 @@ from vc_modules.media_utils import (
     build_video_stream_desc,
 )
 
+
 class vc_pre(QWidget):
     def __init__(self):
         super().__init__()
