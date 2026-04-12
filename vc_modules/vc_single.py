@@ -10,10 +10,10 @@ from PyQt5.QtCore import Qt
 from vc_modules.ffmpeg_progress import (
     FFmpegWorker,
     MediaInfoWorker,
-    detect_binary_info,
-    get_bin_path,
     probe_duration,
 )
+from vc_modules.bin_info import detect_binary_info, get_bin_path
+from vc_modules.debug_section import DebugSection
 from vc_modules.media_utils import build_audio_stream_desc, build_video_stream_desc
 
 class window1(QWidget):
@@ -37,10 +37,12 @@ class window1(QWidget):
         file_label = QLabel(f"输入文件: {os.path.abspath(self.input_file)}")
         format_label = QLabel(f"目标格式: {self.target_format}")
         ffmpeg_info = detect_binary_info("ffmpeg")
-        binary_label = QLabel(
-            f"当前 ffmpeg: {ffmpeg_info['arch']}  ({os.path.basename(ffmpeg_info['path'])})"
+        ffprobe_info = detect_binary_info("ffprobe")
+        self.debug_section = DebugSection(
+            f"ffmpeg: {ffmpeg_info['arch']}  {ffmpeg_info['path']}\n"
+            f"ffprobe: {ffprobe_info['arch']}  {ffprobe_info['path']}",
+            self,
         )
-        binary_label.setWordWrap(True)
 
         video_col = QVBoxLayout()
         video_col.addWidget(QLabel("视频轨道"))
@@ -75,7 +77,6 @@ class window1(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(file_label)
         layout.addWidget(format_label)
-        layout.addWidget(binary_label)
         layout.addLayout(tracks_line)
         layout.addWidget(self.select_output_btn)
         layout.addWidget(self.output_label)
@@ -83,6 +84,7 @@ class window1(QWidget):
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.status_label)
         layout.addStretch()
+        layout.addWidget(self.debug_section)
         self.setLayout(layout)
 
     def load_tracks(self):

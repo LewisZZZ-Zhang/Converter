@@ -1,12 +1,15 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QFileDialog, QComboBox, QMessageBox, QHBoxLayout, QListWidget, QGroupBox,
+    QFileDialog, QComboBox, QMessageBox, QHBoxLayout, QListWidget,
     QProgressBar
 )
+from PyQt5.QtCore import Qt
 import os
 
-from vc_modules.ffmpeg_progress import MediaInfoWorker, detect_binary_info
+from vc_modules.ffmpeg_progress import MediaInfoWorker
+from vc_modules.bin_info import detect_binary_info, get_bin_path
+from vc_modules.debug_section import DebugSection
 from vc_modules.media_details_dialog import MediaDetailsDialog
 from vc_modules.media_utils import (
     build_audio_stream_desc,
@@ -55,11 +58,11 @@ class vc_pre(QWidget):
 
         ffmpeg_info = detect_binary_info("ffmpeg")
         ffprobe_info = detect_binary_info("ffprobe")
-        self.binary_label = QLabel(
-            f"当前 ffmpeg: {ffmpeg_info['arch']}  ({os.path.basename(ffmpeg_info['path'])})\n"
-            f"当前 ffprobe: {ffprobe_info['arch']}  ({os.path.basename(ffprobe_info['path'])})"
+        self.debug_section = DebugSection(
+            f"ffmpeg: {ffmpeg_info['arch']}  {ffmpeg_info['path']}\n"
+            f"ffprobe: {ffprobe_info['arch']}  {ffprobe_info['path']}",
+            self,
         )
-        self.binary_label.setWordWrap(True)
 
         self.confirm_btn = QPushButton("确认")
         self.confirm_btn.clicked.connect(self.go_to_confirm_page)
@@ -105,7 +108,6 @@ class vc_pre(QWidget):
         layout.addLayout(file_input_line)
         layout.addWidget(self.input_select_result)
         layout.addWidget(self.summary_label)  # 新增：总信息显示区
-        layout.addWidget(self.binary_label)
         layout.addWidget(self.loading_label)
         layout.addWidget(self.loading_progress)
         layout.addLayout(tracks_line)
@@ -113,6 +115,7 @@ class vc_pre(QWidget):
         layout.addWidget(self.details_btn)
         layout.addWidget(self.confirm_btn)
         layout.addStretch()
+        layout.addWidget(self.debug_section)
         self.setLayout(layout)
 
     def select_file(self):
