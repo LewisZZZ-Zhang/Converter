@@ -11,8 +11,14 @@ from PyQt5.QtCore import Qt
 from vc_modules.ffmpeg_progress import (
     FFmpegWorker,
     MediaInfoWorker,
+    detect_binary_info,
     get_bin_path,
     probe_duration,
+)
+from vc_modules.media_utils import (
+    build_audio_stream_desc,
+    build_subtitle_stream_desc,
+    build_video_stream_desc,
 )
 
 class window1(QWidget):
@@ -38,6 +44,11 @@ class window1(QWidget):
     def init_ui(self):
         file_label = QLabel(f"输入文件: {os.path.abspath(self.input_file)}")
         format_label = QLabel(f"目标格式: {self.target_format}")
+        ffmpeg_info = detect_binary_info("ffmpeg")
+        binary_label = QLabel(
+            f"当前 ffmpeg: {ffmpeg_info['arch']}  ({os.path.basename(ffmpeg_info['path'])})"
+        )
+        binary_label.setWordWrap(True)
 
         video_col = QVBoxLayout()
         video_col.addWidget(QLabel("视频轨道"))
@@ -88,6 +99,7 @@ class window1(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(file_label)
         layout.addWidget(format_label)
+        layout.addWidget(binary_label)
         layout.addLayout(tracks_line)
         layout.addWidget(self.select_output_btn)
         layout.addWidget(self.output_label)
@@ -150,65 +162,27 @@ class window1(QWidget):
             QMessageBox.warning(self, "错误", f"无法解析轨道信息：{err_msg}")
             return
 
-        info = payload.get('streams', {})
         target_fmt = self.target_format.lower()
-        for stream in info.get('streams', []):
+        for stream in payload.get('streams', []):
             idx = stream.get('index', -1)
             codec = stream.get('codec_name', '未知')
-            lang = stream.get('tags', {}).get('language', '')
             if stream['codec_type'] == 'video':
-                fr = stream.get('r_frame_rate', '')
-                try:
-                    if fr and '/' in fr:
-                        num, den = fr.split('/')
-                        fr_val = float(num) / float(den) if float(den) != 0 else 0
-                    else:
-                        fr_val = float(fr) if fr else 0
-                except:
-                    fr_val = 0
-                width = stream.get('width', '')
-                height = stream.get('height', '')
-                br = stream.get('bit_rate', '')
-                if not br:
-                    br = stream.get('tags', {}).get('BPS', '')
-                if br:
-                    try:
-                        br_disp = f"{int(br)//1000} kbps"
-                    except:
-                        br_disp = str(br)
-                else:
-                    br_disp = ''
-                desc = f"#{idx} {codec} {lang} {width}x{height} {fr_val:.2f}fps {br_disp}".strip()
-                item = QListWidgetItem(desc)
+                item = QListWidgetItem(build_video_stream_desc(stream))
                 item.setData(Qt.UserRole, idx)
                 if codec == 'mjpeg':
                     item.setFlags(item.flags() & ~Qt.ItemIsSelectable & ~Qt.ItemIsEnabled)
-                    item.setText(desc + " (图片流,不可选)")
+                    item.setText(item.text() + " (图片流,不可选)")
                 self.video_list.addItem(item)
             elif stream['codec_type'] == 'audio':
-                sr = stream.get('sample_rate', '')
-                ch = stream.get('channels', '')
-                br = stream.get('bit_rate', '')
-                if not br:
-                    br = stream.get('tags', {}).get('BPS', '')
-                if br:
-                    try:
-                        br_disp = f"{int(br)//1000} kbps"
-                    except:
-                        br_disp = str(br)
-                else:
-                    br_disp = ''
-                desc = f"#{idx} {codec} {lang} {sr}Hz {ch}ch {br_disp}".strip()
-                item = QListWidgetItem(desc)
+                item = QListWidgetItem(build_audio_stream_desc(stream))
                 item.setData(Qt.UserRole, idx)
                 self.audio_list.addItem(item)
             elif stream['codec_type'] == 'subtitle':
-                desc = f"#{idx} {codec} {lang}".strip()
-                item = QListWidgetItem(desc)
+                item = QListWidgetItem(build_subtitle_stream_desc(stream))
                 item.setData(Qt.UserRole, idx)
                 if codec in ('hdmv_pgs_subtitle', 'pgssub') and target_fmt == 'mp4':
                     item.setFlags(item.flags() & ~Qt.ItemIsSelectable & ~Qt.ItemIsEnabled)
-                    item.setText(desc + " (PGS字幕,mp4不支持)")
+                    item.setText(item.text() + " (PGS字幕,mp4不支持)")
                 self.subtitle_list.addItem(item)
 
         self.video_list.setEnabled(True)

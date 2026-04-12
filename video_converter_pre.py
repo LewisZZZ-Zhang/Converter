@@ -6,7 +6,14 @@ from PyQt5.QtWidgets import (
 )
 import os
 
-from vc_modules.ffmpeg_progress import MediaInfoWorker
+from vc_modules.ffmpeg_progress import MediaInfoWorker, detect_binary_info
+from vc_modules.media_details_dialog import MediaDetailsDialog
+from vc_modules.media_utils import (
+    build_audio_stream_desc,
+    build_subtitle_stream_desc,
+    build_summary,
+    build_video_stream_desc,
+)
 
 class vc_pre(QWidget):
     def __init__(self):
@@ -19,6 +26,7 @@ class vc_pre(QWidget):
         self.multi_track_formats = ["mp4", "mov", "mkv"]
 
         self.input_file = None 
+        self.media_payload = None
 
         self.input_select_instruction = QLabel("选择要转换的视频文件")
         self.input_select_btn = QPushButton("选择文件")
@@ -45,9 +53,20 @@ class vc_pre(QWidget):
         self.loading_progress.setRange(0, 0)
         self.loading_progress.setVisible(False)
 
+        ffmpeg_info = detect_binary_info("ffmpeg")
+        ffprobe_info = detect_binary_info("ffprobe")
+        self.binary_label = QLabel(
+            f"当前 ffmpeg: {ffmpeg_info['arch']}  ({os.path.basename(ffmpeg_info['path'])})\n"
+            f"当前 ffprobe: {ffprobe_info['arch']}  ({os.path.basename(ffprobe_info['path'])})"
+        )
+        self.binary_label.setWordWrap(True)
+
         self.confirm_btn = QPushButton("确认")
         self.confirm_btn.clicked.connect(self.go_to_confirm_page)
         self.confirm_btn.setEnabled(False)
+        self.details_btn = QPushButton("查看详情")
+        self.details_btn.clicked.connect(self.show_details)
+        self.details_btn.setEnabled(False)
 
 # 新增：三个列表和分组框
         video_col = QVBoxLayout()
@@ -86,10 +105,12 @@ class vc_pre(QWidget):
         layout.addLayout(file_input_line)
         layout.addWidget(self.input_select_result)
         layout.addWidget(self.summary_label)  # 新增：总信息显示区
+        layout.addWidget(self.binary_label)
         layout.addWidget(self.loading_label)
         layout.addWidget(self.loading_progress)
         layout.addLayout(tracks_line)
         layout.addLayout(output_format_line)
+        layout.addWidget(self.details_btn)
         layout.addWidget(self.confirm_btn)
         layout.addStretch()
         self.setLayout(layout)
@@ -107,9 +128,11 @@ class vc_pre(QWidget):
         self.audio_list.clear()
         self.subtitle_list.clear()
         self.summary_label.setText("")
+        self.media_payload = None
         self.input_select_btn.setEnabled(False)
         self.format_combo.setEnabled(False)
         self.confirm_btn.setEnabled(False)
+        self.details_btn.setEnabled(False)
         self.loading_label.setText("正在加载轨道信息，请稍候...")
         self.loading_label.setVisible(True)
         self.loading_progress.setVisible(True)
@@ -130,93 +153,30 @@ class vc_pre(QWidget):
             QMessageBox.warning(self, "错误", f"无法解析轨道信息：{err_msg}")
             return
 
-        info_streams = payload.get('streams', {})
-        info_format = payload.get('format', {})
+        self.media_payload = payload
+        info_streams = payload
+        info_format = payload
 
-        overall_bitrate = info_format.get('format', {}).get('bit_rate', '')
-        if overall_bitrate:
-            try:
-                overall_bitrate_disp = f"{int(overall_bitrate)//1000} kbps"
-            except:
-                overall_bitrate_disp = str(overall_bitrate)
-        else:
-            overall_bitrate_disp = ''
-
-        width = height = pix_fmt = color_depth = ''
-        for stream in info_streams.get('streams', []):
-            if stream.get('codec_type') == 'video':
-                width = stream.get('width', '')
-                height = stream.get('height', '')
-                pix_fmt = stream.get('pix_fmt', '')
-                color_depth = stream.get('bits_per_raw_sample', '')
-                break
-
-        if not color_depth and pix_fmt:
-            pix_fmt_map = {
-                'yuv420p': '8', 'yuv422p': '8', 'yuv444p': '8',
-                'yuv420p10le': '10', 'yuv422p10le': '10', 'yuv444p10le': '10',
-                'yuv420p12le': '12', 'yuv422p12le': '12', 'yuv444p12le': '12',
-            }
-            color_depth = pix_fmt_map.get(pix_fmt, '')
-
-        summary = f"总比特率: {overall_bitrate_disp}"
-        if width and height:
-            summary += f"  分辨率: {width}x{height}"
-        if color_depth:
-            summary += f"  色深: {color_depth}bit"
-        if pix_fmt:
-            summary += f"  像素格式: {pix_fmt}"
-        self.summary_label.setText(summary)
+        self.summary_label.setText(build_summary(info_streams, info_format))
 
         for stream in info_streams.get('streams', []):
-            codec = stream.get('codec_name', '未知')
-            idx = stream.get('index', -1)
-            lang = stream.get('tags', {}).get('language', '')
             if stream['codec_type'] == 'video':
-                fr = stream.get('r_frame_rate', '')
-                try:
-                    if fr and '/' in fr:
-                        num, den = fr.split('/')
-                        fr_val = float(num) / float(den) if float(den) != 0 else 0
-                    else:
-                        fr_val = float(fr) if fr else 0
-                except:
-                    fr_val = 0
-                width = stream.get('width', '')
-                height = stream.get('height', '')
-                br = stream.get('bit_rate', '')
-                if not br:
-                    br = stream.get('tags', {}).get('BPS', '')
-                if br:
-                    try:
-                        br_disp = f"{int(br)//1000} kbps"
-                    except:
-                        br_disp = str(br)
-                else:
-                    br_disp = ''
-                desc = f"#{idx} {codec} {lang} {width}x{height} {fr_val:.2f}fps {br_disp}".strip()
-                self.video_list.addItem(desc)
+                self.video_list.addItem(build_video_stream_desc(stream))
             elif stream['codec_type'] == 'audio':
-                sr = stream.get('sample_rate', '')
-                ch = stream.get('channels', '')
-                br = stream.get('bit_rate', '')
-                if not br:
-                    br = stream.get('tags', {}).get('BPS', '')
-                if br:
-                    try:
-                        br_disp = f"{int(br)//1000} kbps"
-                    except:
-                        br_disp = str(br)
-                else:
-                    br_disp = ''
-                desc = f"#{idx} {codec} {lang} {sr}Hz {ch}ch {br_disp}".strip()
-                self.audio_list.addItem(desc)
+                self.audio_list.addItem(build_audio_stream_desc(stream))
             elif stream['codec_type'] == 'subtitle':
-                desc = f"#{idx} {codec} {lang}".strip()
-                self.subtitle_list.addItem(desc)
+                self.subtitle_list.addItem(build_subtitle_stream_desc(stream))
 
         self.loading_label.setText("轨道信息加载完成")
         self.confirm_btn.setEnabled(True)
+        self.details_btn.setEnabled(True)
+
+    def show_details(self):
+        if not self.input_file or not self.media_payload:
+            QMessageBox.information(self, "提示", "请先选择并解析一个视频文件。")
+            return
+        dialog = MediaDetailsDialog(self.input_file, self.media_payload, self)
+        dialog.exec_()
 
     def go_to_confirm_page(self):
         if not hasattr(self, "input_file") or not self.input_file:

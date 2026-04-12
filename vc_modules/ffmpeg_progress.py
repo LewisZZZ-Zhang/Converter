@@ -30,6 +30,32 @@ def get_bin_path(bin_name):
     return os.path.join(base_dir, bin_name)
 
 
+def detect_binary_info(bin_name):
+    bin_path = get_bin_path(bin_name)
+    arch = "unknown"
+    try:
+        result = subprocess.run(
+            ["file", bin_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+        output = result.stdout.lower()
+        if "arm64" in output:
+            arch = "arm64"
+        elif "x86_64" in output:
+            arch = "x86_64"
+    except Exception:
+        pass
+
+    return {
+        "name": bin_name,
+        "path": os.path.abspath(bin_path),
+        "arch": arch,
+    }
+
+
 def probe_duration(input_file):
     ffprobe_path = get_bin_path("ffprobe")
     cmd = [
@@ -69,42 +95,39 @@ class MediaInfoWorker(QThread):
         ffprobe_path = get_bin_path("ffprobe")
         self.status_changed.emit("正在读取轨道信息...")
 
-        cmd_streams = [
-            ffprobe_path,
-            "-v",
-            "error",
-            "-show_streams",
-            "-print_format",
-            "json",
-            self.input_file,
-        ]
-
         try:
-            result_streams = subprocess.run(
-                cmd_streams,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True,
-            )
-            payload = {"streams": json.loads(result_streams.stdout.decode(errors="ignore"))}
-
             if self.include_format:
-                cmd_format = [
+                cmd = [
                     ffprobe_path,
                     "-v",
                     "error",
+                    "-show_streams",
                     "-show_format",
+                    "-show_chapters",
+                    "-show_programs",
+                    "-show_stream_groups",
                     "-print_format",
                     "json",
                     self.input_file,
                 ]
-                result_format = subprocess.run(
-                    cmd_format,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=True,
-                )
-                payload["format"] = json.loads(result_format.stdout.decode(errors="ignore"))
+            else:
+                cmd = [
+                    ffprobe_path,
+                    "-v",
+                    "error",
+                    "-show_streams",
+                    "-print_format",
+                    "json",
+                    self.input_file,
+                ]
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+            payload = json.loads(result.stdout.decode(errors="ignore"))
 
             self.finished.emit(True, payload, "")
         except Exception as exc:

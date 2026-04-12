@@ -22,3 +22,6 @@ icon_locations = {
 ln -s /Applications Applications
 
 dmgbuild -s dmg_settings.py "YourApp" YourApp.dmg
+
+
+https://www.osxexperts.net/
