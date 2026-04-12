@@ -1,18 +1,10 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-<<<<<<< Updated upstream
     QFileDialog, QComboBox, QMessageBox, QHBoxLayout, QListWidget, QGroupBox,
     QProgressBar
 )
-=======
-    QFileDialog, QComboBox, QMessageBox, QHBoxLayout, QListWidget, QToolButton
-)
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
-# import ffmpeg
->>>>>>> Stashed changes
 import os
-from vc_modules.bin_info import detect_binary_info, get_bin_path
 
 from vc_modules.ffmpeg_progress import MediaInfoWorker, detect_binary_info
 from vc_modules.media_details_dialog import MediaDetailsDialog
@@ -76,29 +68,6 @@ class vc_pre(QWidget):
         self.details_btn.clicked.connect(self.show_details)
         self.details_btn.setEnabled(False)
 
-        ffmpeg_info = detect_binary_info("ffmpeg")
-        ffprobe_info = detect_binary_info("ffprobe")
-        self.debug_toggle_btn = QToolButton()
-        self.debug_toggle_btn.setText("调试")
-        self.debug_toggle_btn.setCheckable(True)
-        self.debug_toggle_btn.setChecked(False)
-        self.debug_toggle_btn.setArrowType(Qt.RightArrow)
-        self.debug_toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.debug_toggle_btn.setStyleSheet("QToolButton { border: none; padding: 0; }")
-        self.debug_info_label = QLabel(
-            f"ffmpeg: {ffmpeg_info['arch']}  {ffmpeg_info['path']}\n"
-            f"ffprobe: {ffprobe_info['arch']}  {ffprobe_info['path']}"
-        )
-        self.debug_info_label.setWordWrap(True)
-        self.debug_panel = QWidget()
-        debug_layout = QVBoxLayout()
-        debug_layout.setContentsMargins(18, 0, 0, 0)
-        debug_layout.addWidget(self.debug_info_label)
-        self.debug_panel.setLayout(debug_layout)
-        self.debug_info_label.setVisible(False)
-        self.debug_panel.setVisible(False)
-        self.debug_toggle_btn.toggled.connect(self._set_debug_visible)
-
 # 新增：三个列表和分组框
         video_col = QVBoxLayout()
         video_label = QLabel("视频轨道")
@@ -144,14 +113,7 @@ class vc_pre(QWidget):
         layout.addWidget(self.details_btn)
         layout.addWidget(self.confirm_btn)
         layout.addStretch()
-        layout.addWidget(self.debug_toggle_btn)
-        layout.addWidget(self.debug_panel)
         self.setLayout(layout)
-
-    def _set_debug_visible(self, visible):
-        self.debug_toggle_btn.setArrowType(Qt.DownArrow if visible else Qt.RightArrow)
-        self.debug_panel.setVisible(visible)
-        self.debug_info_label.setVisible(visible)
 
     def select_file(self):
         file, _ = QFileDialog.getOpenFileName(self, "选择视频文件", "", "视频文件 (*.mp4 *.avi *.mov *.mkv *.flv *.wmv)")
@@ -166,7 +128,6 @@ class vc_pre(QWidget):
         self.audio_list.clear()
         self.subtitle_list.clear()
         self.summary_label.setText("")
-<<<<<<< Updated upstream
         self.media_payload = None
         self.input_select_btn.setEnabled(False)
         self.format_combo.setEnabled(False)
@@ -175,18 +136,6 @@ class vc_pre(QWidget):
         self.loading_label.setText("正在加载轨道信息，请稍候...")
         self.loading_label.setVisible(True)
         self.loading_progress.setVisible(True)
-=======
-        ffprobe_path = get_bin_path('ffprobe')
-        cmd_streams = [ffprobe_path, '-v', 'error', '-show_streams', '-print_format', 'json', file]
-        cmd_format = [ffprobe_path, '-v', 'error', '-show_format', '-print_format', 'json', file]
-        try:
-            # 获取流信息
-            result_streams = subprocess.run(cmd_streams, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            info_streams = json.loads(result_streams.stdout.decode(errors='ignore'))
-            # 获取文件整体信息
-            result_format = subprocess.run(cmd_format, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            info_format = json.loads(result_format.stdout.decode(errors='ignore'))
->>>>>>> Stashed changes
 
         self.media_worker = MediaInfoWorker(file, include_format=True, parent=self)
         self.media_worker.status_changed.connect(self.loading_label.setText)
